@@ -13,12 +13,13 @@ library(gt)
 library(tidyverse)
 ```
 
-## Making a pretty table
+## Starting with our data
 
 ```{r}
 # Let's get our data in order
 BA_degrees <- read_csv("data/BA_degrees.csv")
 
+# sort into fields relevant to our inquiry 
 BA_degrees_other <- BA_degrees %>%
   mutate(
     field = if_else(field == "Health professions and related programs", "Health professions", field),
@@ -32,22 +33,24 @@ BA_degrees_other <- BA_degrees %>%
   ) %>%
   group_by(year, field) %>%
   summarise(pct = sum(pct), .groups = "drop")
+BA_degrees_other
 ```
 
 ## Starting with a table
+Let's make this a little nicer -- we're going to do some formatting, variable naming, etc. 
 
 ```{r echo = FALSE}
 BA_degrees_other %>%
   pivot_wider(names_from = field, values_from = pct) %>%
-  rename(Year = year) %>%
-  gt() %>%
-  cols_align(
+  rename(Year = year) %>% #renaming and going to wide data
+  gt() %>%  # getting our table object
+  cols_align( # formatting re: alignment and specifying the details
     align = c("right"),
     columns = everything() ) %>%
   cols_width(  Year ~ px(50),
     everything() ~ px(140) ) %>%
   tab_style(
-    style = "padding-top:5px;padding-bottom:5px;",
+    style = "padding-top:5px;padding-bottom:5px;", #css formatting
     locations = cells_body(columns = everything())  ) %>%
   fmt_percent(  columns = -Year,   decimals = 1 ) %>%
   tab_spanner( label = "Popular Bachelor's degrees over the years",
@@ -81,7 +84,7 @@ degrees_years_plot +
 ```
 
 
-## Maybe both? 
+## Prep for both:
 ```{r custom-ggplot, out.width = "40%"}
 
 BA_degrees_other %>%
@@ -135,6 +138,49 @@ Let's turn this into something a little bit nicer. We can add color, turn decima
 plot_spark_color <- function(df) {
   ggplot(df, aes(x = year, y = pct, color = line_color)) + 
     geom_line(size = 20) +
+    theme_void() +
+    scale_color_identity() 
+}
+
+BA_degrees_other_plots_color <- BA_degrees_other %>%
+  mutate(line_color = case_when( 
+    field == "Business" ~ "#9D6C06", 
+    field == "Health professions" ~ "#077DAA", 
+    field == "Social sciences and history" ~ "#026D4E", 
+    field == "Other" ~ "#A39A09" 
+  )) %>% 
+  nest(field_df = c(year, pct, line_color)) %>%
+  mutate(plot = map(field_df, plot_spark_color))
+
+BA_degrees_other %>%
+  pivot_wider(names_from = year, values_from = pct) %>%
+  mutate(ggplot = NA, .after = field) %>%
+  gt() %>%
+  text_transform(
+    locations = cells_body(columns = ggplot),
+    fn = function(x) {
+      map(BA_degrees_other_plots_color$plot, ggplot_image, height = px(15), aspect_ratio = 4)
+    }
+  ) %>%
+  cols_width(ggplot ~ px(300)) %>%
+  cols_align(align = "left", columns = field) %>%
+  fmt_percent(columns = where(is.numeric), decimals = 1) %>%
+  tab_style(style = cell_text(color = "#9D6C06"), locations = cells_body(rows = 1, columns = field)) %>% 
+  tab_style(style = cell_text(color = "#077DAA"), locations = cells_body(rows = 2, columns = field)) %>% 
+  tab_style(style = cell_text(color = "#026D4E"), locations = cells_body(rows = 3, columns = field)) %>% 
+  tab_style(style = cell_text(color = "#A39A09"), locations = cells_body(rows = 4, columns = field)) %>% 
+  cols_label(field = "Field", ggplot = "Trend") %>%
+  tab_spanner(label = "Popular Bachelor's degrees over the years", columns = everything()) %>%
+  tab_style(style = cell_text(weight = "bold"), locations = cells_column_spanners())
+```
+
+## Altering table style
+Note that we can change what we want our plot to look like (also note that this particular plot choice revelals the timeframe of our data collectio/reporting). 
+
+```{r sparklines-polished-hist}
+plot_spark_color <- function(df) {
+  ggplot(df, aes(x = year, y = pct, color = line_color)) + 
+    geom_col(size = 10) +
     theme_void() +
     scale_color_identity() 
 }
